@@ -1,14 +1,15 @@
-#pragma once
+#ifndef BLE_MESH_TRANSPORT_H
+#define BLE_MESH_TRANSPORT_H
 
-#include "esp_gatts_api.h"
+#include <stdint.h>
 
+// Инициализация широковещательного узла
 void ble_mesh_transport_init(void);
 
-//кастомный 16-битный UUID для Сервиса BitChat (взят просто для примера)
-#define BITCHAT_PROFILE_NUM          1
-#define BITCHAT_PROFILE_APP_ID       0
-#define BITCHAT_SVC_UUID             0x00FF
-#define BITCHAT_CHAR_UUID            0xFF01
+// Имя узла в эфире (сделаем коротким, чтобы экономить байты)
+#define DEVICE_NAME "BC_Node"
 
-// Имя устройства, которое отобразится в nRF Connect
-#define DEVICE_NAME                  "ESP32_BLE"
+// Кастомный ID компании для Manufacturer Specific Data (0xFFFF — тестовый диапазон)
+#define BITCHAT_COMPANY_ID 0xFFFF
+
+#endif
