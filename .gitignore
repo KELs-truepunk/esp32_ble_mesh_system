@@ -1,0 +1,11 @@
+.pio/
+.pioenvs/
+.piolibdeps/
+build/
+.vscode/
+.idea/
+*.cmake
+CMakeCache.txt
+CMakeFiles/
+node_modules/
+.DS_Store
