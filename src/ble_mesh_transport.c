@@ -8,7 +8,7 @@
 #include "esp_gap_ble_api.h" // API для GAP (вещание, сканирование)
 #include "esp_gatts_api.h"   // API для GATT (подключение телефона, сервисы)
 
-#include "ble_mesh_protocol.h"  // Наша структура бинарного пакета (13 байт)
+#include "ble_mesh_protocol.h"  // Наша обновленная структура бинарного пакета (14 байт)
 #include "ble_mesh_transport.h" // Заголовочный файл транспорта
 
 static const char *TAG = "BITCHAT_TRANSPORT";
@@ -19,18 +19,12 @@ static const char *TAG = "BITCHAT_TRANSPORT";
 #define BITCHAT_CHAR_UUID 0xFF01
 
 // Наш локальный ID узла для жесткого фильтра собственного эха
-#define MY_NODE_SENDER_ID 0x77777777 
+#define MY_NODE_SENDER_ID 0x77777777
 
-// --- Единый кэш дубликатов ---
+// --- Единый кэш дубликатов по 32-битному хешу FNV-1a ---
 #define ROUTER_CACHE_SIZE 25
 
-typedef struct
-{
-    uint32_t sender_id;
-    uint16_t packet_id;
-} router_cache_t;
-
-static router_cache_t r_cache[ROUTER_CACHE_SIZE];
+static uint32_t r_cache[ROUTER_CACHE_SIZE];
 static int r_cache_idx = 0;
 
 static uint16_t b_char_handle = 0; // Хэндл характеристики для работы с Notify смартфона
@@ -76,22 +70,35 @@ static struct gatts_profile_inst gl_profile_tab[PROFILE_NUM] = {
     [PROFILE_A_APP_ID] = {
         .gatts_cb = gatts_profile_a_event_handler,
         .gatts_if = ESP_GATT_IF_NONE,
-        .conn_id = 0xFFFF, // ФИКС #1: По умолчанию подключения нет!
+        .conn_id = 0xFFFF, // По умолчанию подключения нет
     },
 };
 
-// Вспомогательная функция добавления пакета в кэш дубликатов
-static void add_to_router_cache(uint32_t sender_id, uint16_t packet_id)
+// Вспомогательная функция добавления хеша пакета в кэш дубликатов
+static void add_to_router_cache(uint32_t packet_hash)
 {
-    r_cache[r_cache_idx].sender_id = sender_id;
-    r_cache[r_cache_idx].packet_id = packet_id;
+    r_cache[r_cache_idx] = packet_hash;
     r_cache_idx = (r_cache_idx + 1) % ROUTER_CACHE_SIZE;
+}
+
+// Проверка наличия хеша в кэше
+static bool is_in_router_cache(uint32_t packet_hash)
+{
+    for (int k = 0; k < ROUTER_CACHE_SIZE; k++)
+    {
+        if (r_cache[k] == packet_hash)
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 // Отправка бинарного пакета нашей сети в радиоэфир
 void ble_mesh_broadcast_packet(b_mesh_packet_t *packet)
 {
-    if (packet == NULL) return;
+    if (packet == NULL)
+        return;
 
     uint8_t raw_adv_data[31] = {0};
     uint8_t idx = 0;
@@ -102,19 +109,19 @@ void ble_mesh_broadcast_packet(b_mesh_packet_t *packet)
     raw_adv_data[idx++] = ESP_BLE_ADV_FLAG_NON_LIMIT_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT;
 
     // 2. Manufacturer Specific Data (0xFF)
-    raw_adv_data[idx++] = sizeof(b_mesh_packet_t) + 2 + 1;
+    raw_adv_data[idx++] = sizeof(b_mesh_packet_t) + 2 + 1; // Struct + Company ID + Type
     raw_adv_data[idx++] = 0xFF;
 
     // Company ID (0xFFFF)
-    raw_adv_data[idx++] = (BITCHAT_COMPANY_ID & 0xFF);
-    raw_adv_data[idx++] = ((BITCHAT_COMPANY_ID >> 8) & 0xFF);
+    raw_adv_data[idx++] = (MESH_COMPANY_ID & 0xFF);
+    raw_adv_data[idx++] = ((MESH_COMPANY_ID >> 8) & 0xFF);
 
-    // Копируем пакет
+    // Копируем структуру пакета
     memcpy(&raw_adv_data[idx], packet, sizeof(b_mesh_packet_t));
     idx += sizeof(b_mesh_packet_t);
 
-    ESP_LOGI(TAG, "Трансляция пакета в эфир: ID=%d, TTL=%d, Type=0x%02X",
-             packet->message_id, packet->ttl, packet->packet_type);
+    ESP_LOGI(TAG, "Трансляция пакета в эфир: Seq=%d, TTL=%d, Type=0x%01X",
+             packet->seq_num, packet->ttl, packet->packet_type);
 
     esp_ble_gap_config_adv_data_raw(raw_adv_data, idx);
 }
@@ -127,10 +134,13 @@ void relay_mesh_packet(b_mesh_packet_t *packet)
 void pack_mesh_raw_data(void)
 {
     b_mesh_packet_t startup_packet;
-    uint8_t hello_msg[5] = {'S', 'T', 'A', 'R', 'T'};
+    uint8_t hello_msg[PAYLOAD_SIZE] = {'S', 'T', 'A', 'R', 'T', '!', ' '};
 
     build_mesh_packet(&startup_packet, PACKET_TYPE_MSG, 1, 4, 0x11111111, hello_msg);
-    add_to_router_cache(0x11111111, 1);
+    
+    uint32_t init_hash = mesh_protocol_calc_hash(0x11111111, 1);
+    add_to_router_cache(init_hash);
+    
     ble_mesh_broadcast_packet(&startup_packet);
 }
 
@@ -185,43 +195,38 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
             while (i < adv_len)
             {
                 uint8_t block_len = adv_data[i];
-                if (block_len == 0 || (i + block_len + 1 > adv_len)) break;
+                if (block_len == 0 || (i + block_len + 1 > adv_len))
+                    break;
 
                 uint8_t adv_type = adv_data[i + 1];
                 uint8_t *payload = &adv_data[i + 2];
                 uint8_t payload_len = block_len - 1;
 
-                if (adv_type == 0xFF && payload_len == 15)
+                // 2 байта Company ID + 14 байт b_mesh_packet_t = 16 байт
+                if (adv_type == 0xFF && payload_len == 16)
                 {
                     uint16_t comp_id = (payload[1] << 8) | payload[0];
 
-                    if (comp_id == 0xFFFF)
+                    if (comp_id == MESH_COMPANY_ID)
                     {
                         b_mesh_packet_t incoming_packet;
                         memcpy(&incoming_packet, &payload[2], sizeof(b_mesh_packet_t));
 
                         uint8_t packet_ttl = incoming_packet.ttl;
-                        uint16_t packet_id = incoming_packet.message_id;
+                        uint16_t seq_num = incoming_packet.seq_num;
                         uint8_t packet_type = incoming_packet.packet_type;
                         uint32_t sender_id = incoming_packet.sender_id;
 
-                        // 1. Фильтр дубликатов по кэшу
-                        bool is_duplicate = false;
-                        for (int k = 0; k < ROUTER_CACHE_SIZE; k++)
-                        {
-                            if (r_cache[k].sender_id == sender_id && r_cache[k].packet_id == packet_id)
-                            {
-                                is_duplicate = true;
-                                break;
-                            }
-                        }
+                        // Считаем FNV-1a хеш пакета
+                        uint32_t pkt_hash = mesh_protocol_calc_hash(sender_id, seq_num);
 
-                        if (!is_duplicate)
+                        // 1. Фильтр дубликатов по хешу
+                        if (!is_in_router_cache(pkt_hash))
                         {
-                            // Сохраняем пакет в кэш
-                            add_to_router_cache(sender_id, packet_id);
+                            // Сохраняем хеш в кэш
+                            add_to_router_cache(pkt_hash);
 
-                            // 2. Проброс в GATT только если реальное соединение открыто!
+                            // 2. Проброс в GATT если подключен смартфон
                             if (gl_profile_tab[PROFILE_A_APP_ID].conn_id != 0xFFFF && b_char_handle != 0)
                             {
                                 esp_err_t notify_err = esp_ble_gatts_send_indicate(
@@ -230,11 +235,11 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
                                     b_char_handle,
                                     sizeof(incoming_packet.payload),
                                     incoming_packet.payload,
-                                    false
-                                );
+                                    false);
 
-                                if (notify_err == ESP_OK) {
-                                    ESP_LOGI("GATT_BRIDGE", "Пакет #%d проброшен на телефон!", packet_id);
+                                if (notify_err == ESP_OK)
+                                {
+                                    ESP_LOGI("GATT_BRIDGE", "Пакет #%d проброшен на телефон!", seq_num);
                                 }
                             }
 
@@ -242,22 +247,22 @@ static void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param
                             ESP_LOGI("MESH_ROUTER", "=================================================");
                             ESP_LOGI("MESH_ROUTER", "ПАКЕТ от MAC: %02X:%02X:%02X:%02X:%02X:%02X",
                                      bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
-                            ESP_LOGW("MESH_ROUTER", "ID: #%d | TTL: %d | Type: 0x%02X | Sender: 0x%08X",
-                                     packet_id, packet_ttl, packet_type, (unsigned int)sender_id);
-                            ESP_LOGI("MESH_ROUTER", "Payload: %.5s", incoming_packet.payload);
+                            ESP_LOGW("MESH_ROUTER", "Seq: #%d | TTL: %d | Type: 0x%01X | Sender: 0x%08X",
+                                     seq_num, packet_ttl, packet_type, (unsigned int)sender_id);
+                            ESP_LOGI("MESH_ROUTER", "Payload: %.7s", incoming_packet.payload);
                             ESP_LOGI("MESH_ROUTER", "=================================================");
 
                             // 3. Ретрансляция (Relay)
-                            if (packet_ttl > 1)
+                            if (packet_ttl > 0)
                             {
                                 incoming_packet.ttl--;
                                 ESP_LOGW("MESH_ROUTER", "Ретрансляция пакета #%d. Новый TTL: %d",
-                                         incoming_packet.message_id, incoming_packet.ttl);
+                                         incoming_packet.seq_num, incoming_packet.ttl);
                                 relay_mesh_packet(&incoming_packet);
                             }
                             else
                             {
-                                ESP_LOGI("MESH_ROUTER", "Пакет #%d дропнут: TTL исчерпан", packet_id);
+                                ESP_LOGI("MESH_ROUTER", "Пакет #%d дропнут: TTL исчерпан", seq_num);
                             }
                         }
                     }
@@ -302,13 +307,11 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
         break;
 
     case ESP_GATTS_CONNECT_EVT:
-        // ФИКС #2: Запоминаем conn_id активного подключения!
         gl_profile_tab[PROFILE_A_APP_ID].conn_id = param->connect.conn_id;
-        ESP_LOGW(TAG, "Есть подключение со смартфоном вожатого! conn_id=%d", param->connect.conn_id);
+        ESP_LOGW(TAG, "Есть подключение со смартфоном! conn_id=%d", param->connect.conn_id);
         break;
 
     case ESP_GATTS_DISCONNECT_EVT:
-        // ФИКС #3: Сбрасываем conn_id и перезапускаем вещание для переподключения
         gl_profile_tab[PROFILE_A_APP_ID].conn_id = 0xFFFF;
         ESP_LOGI(TAG, "Смартфон отключился. Перезапуск ADV...");
         esp_ble_gap_start_advertising(&hybrid_adv_params);
@@ -326,19 +329,20 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
             ESP_LOGI(TAG, "Данные из приложения: \"%s\"", dynamic_buffer);
 
             b_mesh_packet_t phone_pkt;
-            uint8_t payload[5] = {0};
+            uint8_t payload[PAYLOAD_SIZE] = {0};
 
-            size_t copy_bytes = (incoming_len > 5) ? 5 : incoming_len;
+            size_t copy_bytes = (incoming_len > PAYLOAD_SIZE) ? PAYLOAD_SIZE : incoming_len;
             memcpy(payload, dynamic_buffer, copy_bytes);
 
-            static uint16_t msg_counter = 500;
-            msg_counter++;
+            static uint16_t seq_counter = 500;
+            seq_counter++;
 
-            // Собираем пакет
-            build_mesh_packet(&phone_pkt, PACKET_TYPE_MSG, msg_counter, 4, MY_NODE_SENDER_ID, payload);
+            // Собираем пакет под новый битовый формат
+            build_mesh_packet(&phone_pkt, PACKET_TYPE_MSG, seq_counter, 4, MY_NODE_SENDER_ID, payload);
 
-            // Сразу гасим эхо — заносим в собственный кэш перед выстрелом в эфир
-            add_to_router_cache(MY_NODE_SENDER_ID, msg_counter);
+            // Гасим эхо — заносим хеш в собственный кэш перед отправкой
+            uint32_t self_hash = mesh_protocol_calc_hash(MY_NODE_SENDER_ID, seq_counter);
+            add_to_router_cache(self_hash);
 
             // Выплевываем в эфир
             ble_mesh_broadcast_packet(&phone_pkt);

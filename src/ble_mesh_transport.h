@@ -9,7 +9,7 @@
 #define DEVICE_NAME "BC_Node"
 
 // Кастомный ID компании для Manufacturer Specific Data (0xFFFF — тестовый диапазон)
-#define BITCHAT_COMPANY_ID 0xFFFF
+#define MESH_COMPANY_ID 0xFFFF
 
 #define SEEN_PACKETS_CACHE_SIZE 20
 // Кастомные UUID для BitChat GATT

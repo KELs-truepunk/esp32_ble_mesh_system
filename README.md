@@ -35,11 +35,11 @@ The protocol uses standard BLE Manufacturer Specific Data (`0xFF`) with a custom
 ## 📁 Project Structure
 
 ```text
-├── main/
-│   ├── main.c                  # Application entry point
-│   ├── ble_mesh_transport.c    # GAP/GATT event handlers & RF broadcast logic
-│   ├── ble_mesh_transport.h    # Transport layer declarations
-│   ├── ble_mesh_protocol.c     # Packet packing, caching, and validation
-│   └── ble_mesh_protocol.h     # Packet structs and constants
-├── CMakeLists.txt
-└── README.md
+    ├── main/
+    │   ├── main.c                  # Application entry point
+    │   ├── ble_mesh_transport.c    # GAP/GATT event handlers & RF broadcast logic
+    │   ├── ble_mesh_transport.h    # Transport layer declarations
+    │   ├── ble_mesh_protocol.c     # Packet packing, caching, and validation
+    │   └── ble_mesh_protocol.h     # Packet structs and constants
+    ├── CMakeLists.txt
+    └── README.md
