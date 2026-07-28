@@ -32,14 +32,17 @@ The protocol uses standard BLE Manufacturer Specific Data (`0xFF`) with a custom
 
 ---
 
-## 📁 Project Structure
+## 📂 Project Structure
 
 ```text
-    ├── main/
-    │   ├── main.c                  # Application entry point
-    │   ├── ble_mesh_transport.c    # GAP/GATT event handlers & RF broadcast logic
-    │   ├── ble_mesh_transport.h    # Transport layer declarations
-    │   ├── ble_mesh_protocol.c     # Packet packing, caching, and validation
-    │   └── ble_mesh_protocol.h     # Packet structs and constants
-    ├── CMakeLists.txt
-    └── README.md
+ble/
+├── include/                   # Header files (Protocol & Transport interfaces)
+│   ├── ble_mesh_protocol.h    # 14-byte packet layout, bit-fields (TTL/type), FNV-1a hash
+│   └── ble_mesh_transport.h   # GAP/GATT constants, duplicate cache, routing prototypes
+├── src/                       # Source implementation
+│   ├── main.c                 # Application entry point, NVS init, transport startup
+│   └── ble_mesh_transport.c   # GAP Scanner/Advertiser, GATT Server, deduplication & relay
+├── partitions.csv             # Custom Flash partition table (optimized for Bluedroid stack)
+├── platformio.ini             # PlatformIO config (ESP-IDF framework, ESP32 board)
+├── sdkconfig.esp32dev         # ESP-IDF configuration (Bluetooth, Bluedroid, logging)
+└── README.md                  # Project documentation
