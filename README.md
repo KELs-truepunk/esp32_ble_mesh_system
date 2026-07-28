@@ -30,6 +30,21 @@ The protocol uses standard BLE Manufacturer Specific Data (`0xFF`) with a custom
 | `ttl` | 1 Byte | Time-To-Live counter (decremented on each relay) |
 | `payload` | 5 Bytes | Raw message data / text snippet |
 
+## 🚀 Protocol Features & Architecture
+
+* **Zero-Connection Flooding Mesh:** Operates strictly via raw BLE Advertisement bursts (`ADV_TYPE_NONCONN_IND`) on channels 37, 38, 39.
+* **Efficient Deduplication:** Ring-cache (`r_cache`) filtering based on FNV-1a packet hashes to prevent broadcast storms.
+* **4-bit TTL Routing:** Controlled retransmission decrement mechanism to manage mesh depth and network saturation.
+
+---
+
+## 🛣 Future Roadmap: Packet Segmentation & Reassembly (Chunking)
+
+To bypass the physical 31-byte limit of BLE Legacy Advertising without sacrificing the connectionless flooding paradigm, the transport layer will incorporate **Chunking / Frame Segmentation**:
+
+* **Header Overhead Optimization:** Compression of node IDs (Short Node ID) to maximize single-frame payload up to ~25 bytes.
+* **Frame Segmentation (`chunk_idx` / `total_chunks`):** Automatic payload slicing at the transmitter for messages exceeding standard frame sizes.
+* **Reassembly Buffer at Receiver:** Sliding reassembly window to collect and re-sequence out-of-order chunks before delivering the complete payload to the application layer.
 ---
 
 ## 📂 Project Structure
