@@ -61,6 +61,7 @@ ble/
 ├── platformio.ini             # PlatformIO config (ESP-IDF framework, ESP32 board)
 ├── sdkconfig.esp32dev         # ESP-IDF configuration (Bluetooth, Bluedroid, logging)
 └── README.md                  # Project documentation
+```
 ---
 ## 📜 License
 
