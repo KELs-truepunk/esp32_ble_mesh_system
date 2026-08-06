@@ -30,14 +30,21 @@ void ble_mesh_transport_init(void)
     esp_bt_controller_config_t bt_cfg = BT_CONTROLLER_INIT_CONFIG_DEFAULT();
     esp_bt_controller_init(&bt_cfg);
     esp_bt_controller_enable(ESP_BT_MODE_BLE);
-
+    
+    //инит прослойки Bluedroid
     esp_bluedroid_init();
     esp_bluedroid_enable();
+    
     //регестрация к алл-беков для GAP и GATT
     esp_ble_gap_register_callback(gap_event_handler);
     esp_ble_gatts_register_callback(gatts_event_handler);
     esp_ble_gatts_app_register(PROFILE_A_APP_ID);
-
+    
+    //ставим BLE передачу на +9dBm
+    ESP_ERROR_CHECK(esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, ESP_PWR_LVL_P9));
+    ESP_ERROR_CHECK(esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_SCAN, ESP_PWR_LVL_P9));
+    ESP_ERROR_CHECK(esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_DEFAULT, ESP_PWR_LVL_P9));
+    
     esp_ble_gap_set_scan_params(&ble_scan_params);
 
     pack_mesh_raw_data();

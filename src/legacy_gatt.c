@@ -5,7 +5,7 @@
 #include "legacy_gatt.h"
 #include "gap_handler.h"
 #include "ble_mesh_protocol.h"
-
+#include "driver/gpio.h"
 static const char *TAG = "LEGACY_GATT";
 
 uint16_t b_char_handle = 0;
@@ -49,12 +49,14 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
     case ESP_GATTS_CONNECT_EVT:
         gl_profile_tab[PROFILE_A_APP_ID].conn_id = param->connect.conn_id;
         ESP_LOGW(TAG, "Есть подключение со смартфоном! conn_id=%d", param->connect.conn_id);
+        gpio_set_level(GPIO_NUM_2, 1);
         break;
 
     case ESP_GATTS_DISCONNECT_EVT:
         gl_profile_tab[PROFILE_A_APP_ID].conn_id = 0xFFFF;
         ESP_LOGI(TAG, "Смартфон отключился. Перезапуск ADV...");
         esp_ble_gap_start_advertising(&hybrid_adv_params);
+        gpio_set_level(GPIO_NUM_2, 0);
         break;
 
     case ESP_GATTS_WRITE_EVT:

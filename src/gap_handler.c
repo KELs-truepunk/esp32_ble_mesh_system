@@ -8,17 +8,17 @@
 
 static const char *TAG = "GAP_HANDLER";
 
-// --- Единый кэш дубликатов по 32-битному хешу FNV-1a ---
+// eдиный кэш дубликатов по 32-битному хешу FNV-1a 
 static uint32_t r_cache[ROUTER_CACHE_SIZE];
 static int r_cache_idx = 0; // счетчик r_cache
 
-// Настройка параметров GAP вещания (Передатчик)
+// настройка параметров GAP вещания (на передачу)
 esp_ble_adv_params_t hybrid_adv_params = {
-    .adv_int_min = 0x20,      // Минимальный интервал вещания (32 * 0.625 мс = 20 мс)
-    .adv_int_max = 0x20,      // Максимальный интервал вещания (20 мс)
-    .adv_type = ADV_TYPE_IND, // Разрешаем входящие подключения от телефонов
+    .adv_int_min = 0x20,      // мин интервал вещания (32 * 0.625 мс = 20 мс)
+    .adv_int_max = 0x20,      // макс интервал вещания (20 мс)
+    .adv_type = ADV_TYPE_IND, // разрешение на входящие подключения от телефонов
     .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
-    .channel_map = ADV_CHNL_ALL, // Вещаем на всех трех частотных каналах (37, 38, 39)
+    .channel_map = ADV_CHNL_ALL, // вещание на всех трех частотных каналах (37, 38, 39)
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
 };
 
