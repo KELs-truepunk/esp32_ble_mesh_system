@@ -86,7 +86,7 @@ void pack_mesh_raw_data(void)
 
     build_mesh_packet(&startup_packet, PACKET_TYPE_MSG, 1, 4, 0x11111111, hello_msg);
 
-    uint32_t init_hash = mesh_protocol_calc_hash(0x11111111, 1);
+    uint32_t init_hash = mesh_calc_hash(0x11111111, 1);
     add_to_router_cache(init_hash);
 
     ble_mesh_broadcast_packet(&startup_packet);
@@ -164,7 +164,7 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                         uint32_t sender_id = incoming_packet.sender_id;
 
                         // Считаем FNV-1a хеш пакета
-                        uint32_t pkt_hash = mesh_protocol_calc_hash(sender_id, seq_num);
+                        uint32_t pkt_hash = mesh_calc_hash(sender_id, seq_num);
 
                         // 1. Фильтр дубликатов по хешу
                         if (!is_in_router_cache(pkt_hash))

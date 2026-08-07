@@ -4,7 +4,7 @@
 #include "ble_mesh_protocol.h"
 
 #define MY_NODE_SENDER_ID 0x77777777
-#define ROUTER_CACHE_SIZE 25 //размер r_cache
+
 
 extern esp_ble_adv_params_t hybrid_adv_params;
 

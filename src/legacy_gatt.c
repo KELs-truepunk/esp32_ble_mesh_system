@@ -81,7 +81,7 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
 
             build_mesh_packet(&phone_pkt, PACKET_TYPE_MSG, seq_counter, 4, MY_NODE_SENDER_ID, payload);
 
-            uint32_t self_hash = mesh_protocol_calc_hash(MY_NODE_SENDER_ID, seq_counter);
+            uint32_t self_hash = mesh_calc_hash(MY_NODE_SENDER_ID, seq_counter);
             add_to_router_cache(self_hash);
 
             ble_mesh_broadcast_packet(&phone_pkt);

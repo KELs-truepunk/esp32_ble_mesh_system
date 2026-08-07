@@ -2,6 +2,9 @@
 
 #include <stdint.h>
 #include <string.h>
+#include "mesh_config.h"
+#include "mesh_hash.h"
+
 
 // Типы пакетов в enum вместо макросов
 typedef enum {
@@ -45,17 +48,4 @@ static inline void build_mesh_packet(b_mesh_packet_t *packet,
     if (data != NULL) {
         memcpy(packet->payload, data, PAYLOAD_SIZE); 
     }
-}
-static inline uint32_t mesh_protocol_calc_hash(uint32_t sender_id, uint16_t seq_num) {
-    uint32_t hash = 2166136261u;
-    for (int i = 0; i < 4; i++) {
-        hash ^= (sender_id >> (i * 8)) & 0xFF;
-        hash *= 16777619u;
-    }
-    hash ^= (seq_num & 0xFF);
-    hash *= 16777619u;
-    hash ^= ((seq_num >> 8) & 0xFF);
-    hash *= 16777619u;
-
-    return hash;
 }
