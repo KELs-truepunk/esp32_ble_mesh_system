@@ -5,10 +5,13 @@
 #include "legacy_gatt.h"
 #include "esp_bt_main.h"
 #include "ble_mesh_transport.h"
+#include "esp_random.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char *TAG = "GAP_HANDLER";
 
-// eдиный кэш дубликатов по 32-битному хешу FNV-1a 
+// eдиный кэш дубликатов по 32-битному хешу FNV-1a
 static uint32_t r_cache[ROUTER_CACHE_SIZE];
 static int r_cache_idx = 0; // счетчик r_cache
 
@@ -76,6 +79,13 @@ void ble_mesh_broadcast_packet(b_mesh_packet_t *packet)
 // Логика маршрутизации
 void relay_mesh_packet(b_mesh_packet_t *packet)
 {
+    if (packet == NULL)
+        return;
+
+    // Рандомный Jitter от 10 до 50 мс для защиты от коллизий при одновременной ретрансляции
+    uint32_t jitter_ms = 10 + (esp_random() % 41);
+    vTaskDelay(pdMS_TO_TICKS(jitter_ms));
+
     ble_mesh_broadcast_packet(packet);
 }
 
@@ -198,8 +208,8 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                             ESP_LOGI("MESH_ROUTER", "Payload: %.7s", incoming_packet.payload);
                             ESP_LOGI("MESH_ROUTER", "=================================================");
 
-                            // 3. Ретрансляция (Relay)
-                            if (packet_ttl > 0)
+                            // 3. Ретрансляция (Relay) — отсекаем зомби-пакеты (TTL <= 1)
+                            if (packet_ttl > 1)
                             {
                                 incoming_packet.ttl--;
                                 ESP_LOGW("MESH_ROUTER", "Ретрансляция пакета #%d. Новый TTL: %d",
@@ -208,7 +218,8 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                             }
                             else
                             {
-                                ESP_LOGI("MESH_ROUTER", "Пакет #%d дропнут: TTL исчерпан", seq_num);
+                                ESP_LOGI("MESH_ROUTER", "Пакет #%d дропнут: TTL=%d <= 1 (зомби-пакет)",
+                                         seq_num, packet_ttl);
                             }
                         }
                     }
