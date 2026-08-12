@@ -68,23 +68,40 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
             memcpy(dynamic_buffer, param->write.value, incoming_len);
             dynamic_buffer[incoming_len] = '\0';
 
-            ESP_LOGI(TAG, "Данные из приложения: \"%s\"", dynamic_buffer);
-
-            b_mesh_packet_t phone_pkt;
-            uint8_t payload[PAYLOAD_SIZE] = {0};
-
-            size_t copy_bytes = (incoming_len > PAYLOAD_SIZE) ? PAYLOAD_SIZE : incoming_len;
-            memcpy(payload, dynamic_buffer, copy_bytes);
+            ESP_LOGI(TAG, "Данные из приложения (%d байт): \"%s\"", incoming_len, dynamic_buffer);
 
             static uint16_t seq_counter = 500;
             seq_counter++;
 
-            build_mesh_packet(&phone_pkt, PACKET_TYPE_MSG, seq_counter, 4, MY_NODE_SENDER_ID, payload);
+            // Расчет количества сегментов
+            uint8_t total_segments = (incoming_len + PAYLOAD_SIZE - 1) / PAYLOAD_SIZE;
+            if (total_segments > 15)
+                total_segments = 15;
 
-            uint32_t self_hash = mesh_calc_hash(MY_NODE_SENDER_ID, seq_counter);
-            add_to_router_cache(self_hash);
+            for (uint8_t i = 0; i < total_segments; i++)
+            {
+                b_mesh_packet_t phone_pkt;
 
-            ble_mesh_broadcast_packet(&phone_pkt);
+                size_t offset = i * PAYLOAD_SIZE;
+                size_t chunk_size = incoming_len - offset;
+                if (chunk_size > PAYLOAD_SIZE)
+                    chunk_size = PAYLOAD_SIZE;
+
+                uint8_t payload[PAYLOAD_SIZE] = {0};
+                memcpy(payload, dynamic_buffer + offset, chunk_size);
+
+                uint8_t pkt_type = (total_segments > 1) ? PACKET_TYPE_SEG : PACKET_TYPE_MSG;
+
+                build_mesh_packet(&phone_pkt, pkt_type, seq_counter, DEFAULT_TTL,
+                                  total_segments, i, DEFAULT_SENDER_ID, payload);
+
+                // Хэшируем с индексом сегмента i
+                uint32_t self_hash = mesh_calc_hash(DEFAULT_SENDER_ID, seq_counter, i);
+                add_to_router_cache(self_hash);
+
+                ble_mesh_broadcast_packet(&phone_pkt);
+                vTaskDelay(pdMS_TO_TICKS(20)); // Небольшой интервал между всплесками
+            }
 
             esp_ble_gatts_send_indicate(gatts_if, param->write.conn_id, b_char_handle,
                                         incoming_len, (uint8_t *)dynamic_buffer, false);
@@ -97,29 +114,25 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
         }
         break;
     }
-    default:
-        break;
-    }
-}
 
-void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t *param)
-{
-    if (event == ESP_GATTS_REG_EVT)
-    {
-        if (param->reg.status == ESP_GATT_OK)
+        void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t * param)
         {
-            gl_profile_tab[param->reg.app_id].gatts_if = gatts_if;
+            if (event == ESP_GATTS_REG_EVT)
+            {
+                if (param->reg.status == ESP_GATT_OK)
+                {
+                    gl_profile_tab[param->reg.app_id].gatts_if = gatts_if;
+                }
+                else
+                {
+                    return;
+                }
+            }
+            if (gatts_if == ESP_GATT_IF_NONE || gatts_if == gl_profile_tab[PROFILE_A_APP_ID].gatts_if)
+            {
+                if (gl_profile_tab[PROFILE_A_APP_ID].gatts_cb)
+                {
+                    gl_profile_tab[PROFILE_A_APP_ID].gatts_cb(event, gatts_if, param);
+                }
+            }
         }
-        else
-        {
-            return;
-        }
-    }
-    if (gatts_if == ESP_GATT_IF_NONE || gatts_if == gl_profile_tab[PROFILE_A_APP_ID].gatts_if)
-    {
-        if (gl_profile_tab[PROFILE_A_APP_ID].gatts_cb)
-        {
-            gl_profile_tab[PROFILE_A_APP_ID].gatts_cb(event, gatts_if, param);
-        }
-    }
-}
