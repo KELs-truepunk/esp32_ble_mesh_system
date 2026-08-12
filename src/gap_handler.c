@@ -92,11 +92,11 @@ void relay_mesh_packet(b_mesh_packet_t *packet)
 void pack_mesh_raw_data(void)
 {
     b_mesh_packet_t startup_packet;
-    uint8_t hello_msg[PAYLOAD_SIZE] = {'S', 'T', 'A', 'R', 'T', '!', ' '};
+    uint8_t hello_msg[PAYLOAD_SIZE] = {'S', 'T', 'A', 'R', 'T', '!', ' ', 'N', 'O', 'D', 'E'};
 
-    build_mesh_packet(&startup_packet, PACKET_TYPE_MSG, 1, 4, 0x11111111, hello_msg);
+    build_mesh_packet(&startup_packet, PACKET_TYPE_MSG, 1, DEFAULT_TTL, 1, 0, 0x11111111, hello_msg);
 
-    uint32_t init_hash = mesh_calc_hash(0x11111111, 1);
+    uint32_t init_hash = mesh_calc_hash(0x11111111, 1, 0);
     add_to_router_cache(init_hash);
 
     ble_mesh_broadcast_packet(&startup_packet);
@@ -158,8 +158,8 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                 uint8_t *payload = &adv_data[i + 2];
                 uint8_t payload_len = block_len - 1;
 
-                // 2 байта Company ID + 14 байт b_mesh_packet_t = 16 байт
-                if (adv_type == 0xFF && payload_len == 16)
+                //  b_mesh_packet_t = 21 байт
+                if (adv_type == 0xFF && payload_len == 21)
                 {
                     uint16_t comp_id = (payload[1] << 8) | payload[0];
 
@@ -174,7 +174,7 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                         uint32_t sender_id = incoming_packet.sender_id;
 
                         // Считаем FNV-1a хеш пакета
-                        uint32_t pkt_hash = mesh_calc_hash(sender_id, seq_num);
+                        uint32_t pkt_hash = mesh_calc_hash(sender_id, seq_num, incoming_packet.seg_current);
 
                         // 1. Фильтр дубликатов по хешу
                         if (!is_in_router_cache(pkt_hash))
@@ -203,9 +203,10 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                             ESP_LOGI("MESH_ROUTER", "=================================================");
                             ESP_LOGI("MESH_ROUTER", "ПАКЕТ от MAC: %02X:%02X:%02X:%02X:%02X:%02X",
                                      bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
-                            ESP_LOGW("MESH_ROUTER", "Seq: #%d | TTL: %d | Type: 0x%01X | Sender: 0x%08X",
-                                     seq_num, packet_ttl, packet_type, (unsigned int)sender_id);
-                            ESP_LOGI("MESH_ROUTER", "Payload: %.7s", incoming_packet.payload);
+                            ESP_LOGW("MESH_ROUTER", "Seq: #%d | Seg: [%d/%d] | TTL: %d | Type: 0x%01X | Sender: 0x%08X",
+                                     seq_num, incoming_packet.seg_current + 1, incoming_packet.seg_total,
+                                     packet_ttl, packet_type, (unsigned int)sender_id);
+                            ESP_LOGI("MESH_ROUTER", "Payload: %.11s", incoming_packet.payload);
                             ESP_LOGI("MESH_ROUTER", "=================================================");
 
                             // 3. Ретрансляция (Relay) — отсекаем зомби-пакеты (TTL <= 1)
