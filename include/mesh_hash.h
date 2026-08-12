@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 // Алгоритм FNV-1a для генерации 32-битного хэша пакета
-static inline uint32_t mesh_calc_hash(uint32_t sender_id, uint16_t seq_num) {
+static inline uint32_t mesh_calc_hash(uint32_t sender_id, uint16_t seq_num, uint8_t seg_current) {
     uint32_t hash = 2166136261u;
     
     // Хэшируем 4 байта sender_id
@@ -16,6 +16,10 @@ static inline uint32_t mesh_calc_hash(uint32_t sender_id, uint16_t seq_num) {
     hash ^= (seq_num & 0xFF);
     hash *= 16777619u;
     hash ^= ((seq_num >> 8) & 0xFF);
+    hash *= 16777619u;
+
+    // Хэшируем seg_current
+    hash ^= (seg_current & 0xFF);
     hash *= 16777619u;
 
     return hash;
