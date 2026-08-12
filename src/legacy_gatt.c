@@ -98,12 +98,17 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
                 build_mesh_packet(&phone_pkt, pkt_type, seq_counter, DEFAULT_TTL,
                                   total_segments, i, DEFAULT_SENDER_ID, payload);
 
-                // Хэшируем с индексом сегмента i
                 uint32_t self_hash = mesh_calc_hash(DEFAULT_SENDER_ID, seq_counter, i);
                 add_to_router_cache(self_hash);
 
-                ble_mesh_broadcast_packet(&phone_pkt);
-                vTaskDelay(pdMS_TO_TICKS(20)); // Небольшой интервал между всплесками
+                // BURST: Отправляем один и тот же сегмент 3 раза подряд для компенсации помех
+                for (uint8_t b = 0; b < 3; b++)
+                {
+                    ble_mesh_broadcast_packet(&phone_pkt);
+                    vTaskDelay(pdMS_TO_TICKS(5));
+                }
+
+                vTaskDelay(pdMS_TO_TICKS(35)); // Пауза перед следующим сегментом
             }
 
             esp_ble_gatts_send_indicate(gatts_if, param->write.conn_id, b_char_handle,
@@ -119,27 +124,27 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
     default:
         break;
     }
-}
+    }
 }
 
-    void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t * param)
+void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t *param)
+{
+    if (event == ESP_GATTS_REG_EVT)
     {
-        if (event == ESP_GATTS_REG_EVT)
+        if (param->reg.status == ESP_GATT_OK)
         {
-            if (param->reg.status == ESP_GATT_OK)
-            {
-                gl_profile_tab[param->reg.app_id].gatts_if = gatts_if;
-            }
-            else
-            {
-                return;
-            }
+            gl_profile_tab[param->reg.app_id].gatts_if = gatts_if;
         }
-        if (gatts_if == ESP_GATT_IF_NONE || gatts_if == gl_profile_tab[PROFILE_A_APP_ID].gatts_if)
+        else
         {
-            if (gl_profile_tab[PROFILE_A_APP_ID].gatts_cb)
-            {
-                gl_profile_tab[PROFILE_A_APP_ID].gatts_cb(event, gatts_if, param);
-            }
+            return;
         }
     }
+    if (gatts_if == ESP_GATT_IF_NONE || gatts_if == gl_profile_tab[PROFILE_A_APP_ID].gatts_if)
+    {
+        if (gl_profile_tab[PROFILE_A_APP_ID].gatts_cb)
+        {
+            gl_profile_tab[PROFILE_A_APP_ID].gatts_cb(event, gatts_if, param);
+        }
+    }
+}
