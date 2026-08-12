@@ -40,16 +40,18 @@ static inline void build_mesh_packet(b_mesh_packet_t *packet,
                                      uint8_t type, 
                                      uint16_t seq_num, 
                                      uint8_t ttl, 
+                                     uint8_t seg_total,    // <-- Новый аргумент
+                                     uint8_t seg_current,  // <-- Новый аргумент
                                      uint32_t sender, 
                                      const uint8_t *data) {
     packet->sender_id = sender;
     packet->seq_num = seq_num;
-    packet->packet_type = type & 0x0F; // Ограничиваем 4 битами
-    packet->ttl = ttl & 0x0F;         // Ограничиваем 4 битами
-    
-    // Очищаем payload перед записью
+    packet->packet_type = type & 0x0F; 
+    packet->ttl = ttl & 0x0F;          
+    packet->seg_total = seg_total & 0x0F;
+    packet->seg_current = seg_current & 0x0F;
+    //очистка пайлода 
     memset(packet->payload, 0, PAYLOAD_SIZE);
-    
     if (data != NULL) {
         memcpy(packet->payload, data, PAYLOAD_SIZE); 
     }

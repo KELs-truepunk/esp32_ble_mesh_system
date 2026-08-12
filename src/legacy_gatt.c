@@ -6,6 +6,9 @@
 #include "gap_handler.h"
 #include "ble_mesh_protocol.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+
 static const char *TAG = "LEGACY_GATT";
 
 uint16_t b_char_handle = 0;
@@ -113,26 +116,30 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
             esp_ble_gatts_send_response(gatts_if, param->write.conn_id, param->write.trans_id, ESP_GATT_OK, NULL);
         }
         break;
+    default:
+        break;
     }
+}
+}
 
-        void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t * param)
+    void gatts_event_handler(esp_gatts_cb_event_t event, esp_gatt_if_t gatts_if, esp_ble_gatts_cb_param_t * param)
+    {
+        if (event == ESP_GATTS_REG_EVT)
         {
-            if (event == ESP_GATTS_REG_EVT)
+            if (param->reg.status == ESP_GATT_OK)
             {
-                if (param->reg.status == ESP_GATT_OK)
-                {
-                    gl_profile_tab[param->reg.app_id].gatts_if = gatts_if;
-                }
-                else
-                {
-                    return;
-                }
+                gl_profile_tab[param->reg.app_id].gatts_if = gatts_if;
             }
-            if (gatts_if == ESP_GATT_IF_NONE || gatts_if == gl_profile_tab[PROFILE_A_APP_ID].gatts_if)
+            else
             {
-                if (gl_profile_tab[PROFILE_A_APP_ID].gatts_cb)
-                {
-                    gl_profile_tab[PROFILE_A_APP_ID].gatts_cb(event, gatts_if, param);
-                }
+                return;
             }
         }
+        if (gatts_if == ESP_GATT_IF_NONE || gatts_if == gl_profile_tab[PROFILE_A_APP_ID].gatts_if)
+        {
+            if (gl_profile_tab[PROFILE_A_APP_ID].gatts_cb)
+            {
+                gl_profile_tab[PROFILE_A_APP_ID].gatts_cb(event, gatts_if, param);
+            }
+        }
+    }
