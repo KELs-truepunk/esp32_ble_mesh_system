@@ -15,6 +15,15 @@ static const char *TAG = "GAP_HANDLER";
 static uint32_t r_cache[ROUTER_CACHE_SIZE];
 static int r_cache_idx = 0; // счетчик r_cache
 
+// Буфер сборки сегментированных сообщений
+typedef struct {
+    uint16_t seq_num;
+    uint32_t sender_id;
+    uint8_t total_segs;
+    uint16_t rx_mask; // Битовая маска собранных сегментов
+    char buffer[15 * PAYLOAD_SIZE + 1];
+} mesh_reassembly_t;
+
 // настройка параметров GAP вещания (на передачу)
 esp_ble_adv_params_t hybrid_adv_params = {
     .adv_int_min = 0x20,      // мин интервал вещания (32 * 0.625 мс = 20 мс)
