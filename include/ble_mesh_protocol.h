@@ -10,25 +10,30 @@
 typedef enum {
     PACKET_TYPE_MSG = 0x01,  // Обычное текстовое сообщение
     PACKET_TYPE_SOS = 0x02,  // Экстренный сигнал
-    PACKET_TYPE_SYS = 0x03   // Сервисный пакет (например, синхронизация)
+    PACKET_TYPE_SYS = 0x03,   // Сервисный пакет (например, синхронизация)
+    PACKET_TYPE_SEG = 0x04   // Сегментированный пакет
 } mesh_packet_type_t;
 
-#define PAYLOAD_SIZE 7       // Увеличили размер полезной нагрузки с 5 до 7 байт!
+#define PAYLOAD_SIZE 11       // Увеличили размер полезной нагрузки с 5 до 11 байт!
 
-// Упакованная структура пакета (ровно 14 байт)
+// Упакованная структура пакета (ровно 19 байт)
 typedef struct __attribute__((packed)) {
-    uint32_t sender_id;              // 4 байта: ID отправителя
-    uint16_t seq_num;                // 2 байта: Порядковый номер (бывший message_id)
+    uint32_t sender_id;      // 4 байта: ID отправителя
+    uint16_t seq_num;        // 2 байта: Порядковый номер
     
-    // Упакованный байт (8 бит суммарно):
-    uint8_t packet_type : 4;        // 4 бита: Тип пакета (значения 0..15)
-    uint8_t ttl         : 4;        // 4 бита: Time To Live (значения 0..15)
+    // Упакованный байт 1:
+    uint8_t packet_type : 4; // 4 бита: Тип пакета
+    uint8_t ttl         : 4; // 4 бита: TTL (0..15)
     
-    uint8_t payload[PAYLOAD_SIZE];  // 7 байт: Полезная нагрузка
+    // Упакованный байт 2 (Сегментация):
+    uint8_t seg_total   : 4; // 4 бита: Всего сегментов (до 15)
+    uint8_t seg_current : 4; // 4 бита: Текущий сегмент (0..14)
+    
+    uint8_t payload[PAYLOAD_SIZE];  // 11 байт
 } b_mesh_packet_t;
 
 // Проверка размера структуры на этапе компиляции (защита от сдвигов выравнивания)
-_Static_assert(sizeof(b_mesh_packet_t) == 14, "b_mesh_packet_t must be exactly 14 bytes");
+_Static_assert(sizeof(b_mesh_packet_t) == 19, "b_mesh_packet_t must be exactly 19 bytes");
 
 
 static inline void build_mesh_packet(b_mesh_packet_t *packet, 
