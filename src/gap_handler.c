@@ -16,13 +16,15 @@ static uint32_t r_cache[ROUTER_CACHE_SIZE];
 static int r_cache_idx = 0; // счетчик r_cache
 
 // Буфер сборки сегментированных сообщений
-typedef struct {
+typedef struct
+{
     uint16_t seq_num;
     uint32_t sender_id;
     uint8_t total_segs;
     uint16_t rx_mask; // Битовая маска собранных сегментов
     char buffer[15 * PAYLOAD_SIZE + 1];
 } mesh_reassembly_t;
+static mesh_reassembly_t rx_session = {0};
 
 // настройка параметров GAP вещания (на передачу)
 esp_ble_adv_params_t hybrid_adv_params = {
@@ -59,7 +61,8 @@ void ble_mesh_broadcast_packet(b_mesh_packet_t *packet)
 {
     if (packet == NULL)
         return;
-
+    ESP_LOGI("GAP_HANDLER", "Трансляция в эфир: Seq=%d, Seg=[%d/%d], TTL=%d\n PAYLOAD: %d",
+             packet->seq_num, packet->seg_current + 1, packet->seg_total, packet->ttl);
     uint8_t raw_adv_data[31] = {0};
     uint8_t idx = 0;
 
@@ -168,7 +171,7 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                 uint8_t payload_len = block_len - 1;
 
                 //  b_mesh_packet_t = 21 байт
-                if (adv_type == 0xFF && payload_len == 21)
+                if (adv_type == 0xFF && payload_len == (2 + sizeof(b_mesh_packet_t)))
                 {
                     uint16_t comp_id = (payload[1] << 8) | payload[0];
 
@@ -177,9 +180,9 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                         b_mesh_packet_t incoming_packet;
                         memcpy(&incoming_packet, &payload[2], sizeof(b_mesh_packet_t));
 
-                        uint8_t packet_ttl = incoming_packet.ttl;
+                        // uint8_t packet_ttl = incoming_packet.ttl;
                         uint16_t seq_num = incoming_packet.seq_num;
-                        uint8_t packet_type = incoming_packet.packet_type;
+                        // uint8_t packet_type = incoming_packet.packet_type;
                         uint32_t sender_id = incoming_packet.sender_id;
 
                         // Считаем FNV-1a хеш пакета
@@ -191,45 +194,60 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                             // Сохраняем хеш в кэш
                             add_to_router_cache(pkt_hash);
 
-                            // 2. Проброс в GATT если подключен смартфон
-                            if (gl_profile_tab[PROFILE_A_APP_ID].conn_id != 0xFFFF && b_char_handle != 0)
+                            // 1. СБОРКА СЕГМЕНТОВ (Reassembly)
+                            if (rx_session.seq_num != incoming_packet.seq_num ||
+                                rx_session.sender_id != incoming_packet.sender_id)
                             {
-                                esp_err_t notify_err = esp_ble_gatts_send_indicate(
-                                    gl_profile_tab[PROFILE_A_APP_ID].gatts_if,
-                                    gl_profile_tab[PROFILE_A_APP_ID].conn_id,
-                                    b_char_handle,
-                                    sizeof(incoming_packet.payload),
-                                    incoming_packet.payload,
-                                    false);
+                                // Новый seq_num или отправитель — сбрасываем буфер
+                                rx_session.seq_num = incoming_packet.seq_num;
+                                rx_session.sender_id = incoming_packet.sender_id;
+                                rx_session.total_segs = incoming_packet.seg_total;
+                                rx_session.rx_mask = 0;
+                                memset(rx_session.buffer, 0, sizeof(rx_session.buffer));
+                            }
 
-                                if (notify_err == ESP_OK)
+                            // Пишем сегмент в нужный офсет общего буфера
+                            size_t offset = incoming_packet.seg_current * PAYLOAD_SIZE;
+                            if (offset + PAYLOAD_SIZE <= sizeof(rx_session.buffer))
+                            {
+                                memcpy(rx_session.buffer + offset, incoming_packet.payload, PAYLOAD_SIZE);
+                                rx_session.rx_mask |= (1 << incoming_packet.seg_current);
+                            }
+
+                            uint16_t target_mask = (1 << incoming_packet.seg_total) - 1;
+
+                            // Лог перехвата отдельного сегмента
+                            ESP_LOGI("MESH_ROUTER", "Перехвачен Seg [%d/%d] от MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+                                     incoming_packet.seg_current + 1, incoming_packet.seg_total,
+                                     bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
+
+                            // 2. Если ВСЕ сегменты пакета собраны (маска совпала)
+                            if ((rx_session.rx_mask & target_mask) == target_mask)
+                            {
+                                ESP_LOGW("MESH_ROUTER", "=================================================");
+                                ESP_LOGW("MESH_ROUTER", ">>> СООБЩЕНИЕ СОБРАНО: \"%s\" <<<", rx_session.buffer);
+                                ESP_LOGW("MESH_ROUTER", "=================================================");
+
+                                // Пробрасываем ЦЕЛЬНОЕ собранное сообщение в смартфон по GATT
+                                if (gl_profile_tab[PROFILE_A_APP_ID].conn_id != 0xFFFF && b_char_handle != 0)
                                 {
-                                    ESP_LOGI("GATT_BRIDGE", "Пакет #%d проброшен на телефон!", seq_num);
+                                    esp_ble_gatts_send_indicate(
+                                        gl_profile_tab[PROFILE_A_APP_ID].gatts_if,
+                                        gl_profile_tab[PROFILE_A_APP_ID].conn_id,
+                                        b_char_handle,
+                                        strlen(rx_session.buffer),
+                                        (uint8_t *)rx_session.buffer,
+                                        false);
                                 }
                             }
 
-                            // Лог перехвата
-                            ESP_LOGI("MESH_ROUTER", "=================================================");
-                            ESP_LOGI("MESH_ROUTER", "ПАКЕТ от MAC: %02X:%02X:%02X:%02X:%02X:%02X",
-                                     bda[0], bda[1], bda[2], bda[3], bda[4], bda[5]);
-                            ESP_LOGW("MESH_ROUTER", "Seq: #%d | Seg: [%d/%d] | TTL: %d | Type: 0x%01X | Sender: 0x%08X",
-                                     seq_num, incoming_packet.seg_current + 1, incoming_packet.seg_total,
-                                     packet_ttl, packet_type, (unsigned int)sender_id);
-                            ESP_LOGI("MESH_ROUTER", "Payload: %.11s", incoming_packet.payload);
-                            ESP_LOGI("MESH_ROUTER", "=================================================");
-
-                            // 3. Ретрансляция (Relay) — отсекаем зомби-пакеты (TTL <= 1)
-                            if (packet_ttl > 1)
+                            // 3. Ретрансляция (Relay)
+                            if (incoming_packet.ttl > 1)
                             {
                                 incoming_packet.ttl--;
                                 ESP_LOGW("MESH_ROUTER", "Ретрансляция пакета #%d. Новый TTL: %d",
                                          incoming_packet.seq_num, incoming_packet.ttl);
                                 relay_mesh_packet(&incoming_packet);
-                            }
-                            else
-                            {
-                                ESP_LOGI("MESH_ROUTER", "Пакет #%d дропнут: TTL=%d <= 1 (зомби-пакет)",
-                                         seq_num, packet_ttl);
                             }
                         }
                     }

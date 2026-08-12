@@ -108,7 +108,7 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
                     vTaskDelay(pdMS_TO_TICKS(5));
                 }
 
-                vTaskDelay(pdMS_TO_TICKS(35)); // Пауза перед следующим сегментом
+                vTaskDelay(pdMS_TO_TICKS(100)); // Пауза перед следующим сегментом
             }
 
             esp_ble_gatts_send_indicate(gatts_if, param->write.conn_id, b_char_handle,
