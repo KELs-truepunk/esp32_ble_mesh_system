@@ -113,41 +113,14 @@ bool is_in_router_cache(uint32_t packet_hash)
     return false;
 }
 
-// Отправка бинарного пакета нашей сети в радиоэфир
+// Отправка бинарного пакета нашей сети в очередь
 void ble_mesh_broadcast_packet(b_mesh_packet_t *packet)
 {
-    if (packet == NULL)
-        return;
+    if (packet == NULL || mesh_tx_queue == NULL) return;
 
-    esp_ble_gap_stop_advertising();
-    ESP_LOGI("GAP_HANDLER", "Трансляция в эфир: Seq=%d, Seg=[%d/%d], TTL=%d\n PAYLOAD: %d",
-             packet->seq_num, packet->seg_current + 1, packet->seg_total, packet->ttl);
-    // uint8_t raw_adv_data[31] = {0};
-    uint8_t idx = 0;
-    memset(pending_adv_data, 0, sizeof(pending_adv_data));
-    // 1. BLE Flags
-    pending_adv_data[idx++] = 2;
-    pending_adv_data[idx++] = ESP_BLE_AD_TYPE_FLAG;
-    pending_adv_data[idx++] = ESP_BLE_ADV_FLAG_NON_LIMIT_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT;
-
-    // 2. Manufacturer Specific Data (0xFF)
-    pending_adv_data[idx++] = sizeof(b_mesh_packet_t) + 2 + 1; // Struct + Company ID + Type
-    pending_adv_data[idx++] = 0xFF;
-
-    // Company ID (0xFFFF)
-    pending_adv_data[idx++] = (MESH_COMPANY_ID & 0xFF);
-    pending_adv_data[idx++] = ((MESH_COMPANY_ID >> 8) & 0xFF);
-
-    // Копируем структуру пакета
-    memcpy(&pending_adv_data[idx], packet, sizeof(b_mesh_packet_t));
-    idx += sizeof(b_mesh_packet_t);
-
-    ESP_LOGI(TAG, "Трансляция пакета в эфир: Seq=%d, TTL=%d, Type=0x%01X",
-             packet->seq_num, packet->ttl, packet->packet_type);
-
-    pending_adv_len = idx;
-    // Шаг 1: Глушим текущую рекламу
-    esp_ble_gap_stop_advertising();
+    if (xQueueSend(mesh_tx_queue, packet, pdMS_TO_TICKS(50)) != pdTRUE) {
+        ESP_LOGE("MESH_TX", "Переполнение TX-очереди! Пакет Seq=%d потерян", packet->seq_num);
+    }
 }
 // Логика маршрутизации
 void relay_mesh_packet(b_mesh_packet_t *packet)
