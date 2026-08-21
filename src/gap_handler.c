@@ -8,11 +8,9 @@
 #include "esp_random.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
 #include "freertos/queue.h"
 
+// Буферы очереди и передачи
 static QueueHandle_t mesh_tx_queue = NULL;
 static uint8_t pending_adv_data[31];
 static uint8_t pending_adv_len = 0;
@@ -22,9 +20,6 @@ static const char *TAG = "GAP_HANDLER";
 // eдиный кэш дубликатов по 32-битному хешу FNV-1a
 static uint32_t r_cache[ROUTER_CACHE_SIZE];
 static int r_cache_idx = 0; // счетчик r_cache
-// Чтобы передать байты пакета из функции ble_mesh_broadcast_packet в событие остановки рекламы, сохраняем их во временный буфер:
-static uint8_t pending_adv_data[31];
-static uint8_t pending_adv_len = 0;
 
 // Буфер сборки сегментированных сообщений
 typedef struct
@@ -46,6 +41,7 @@ esp_ble_adv_params_t hybrid_adv_params = {
     .channel_map = ADV_CHNL_ALL, // вещание на всех трех частотных каналах (37, 38, 39)
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
 };
+
 void mesh_tx_task(void *pvParameters)
 {
     b_mesh_packet_t pkt;
@@ -119,7 +115,8 @@ void ble_mesh_broadcast_packet(b_mesh_packet_t *packet)
     if (packet == NULL || mesh_tx_queue == NULL)
         return;
 
-    if (xQueueSend(mesh_tx_queue, packet, pdMS_TO_TICKS(50)) != pdTRUE)
+    // Таймаут 0 — мгновенно скидываем в очередь из контекста BT-стека
+    if (xQueueSend(mesh_tx_queue, packet, 0) != pdTRUE)
     {
         ESP_LOGE("MESH_TX", "Переполнение TX-очереди! Пакет Seq=%d потерян", packet->seq_num);
     }
@@ -130,10 +127,7 @@ void relay_mesh_packet(b_mesh_packet_t *packet)
     if (packet == NULL)
         return;
 
-    // Рандомный Jitter от 10 до 50 мс для защиты от коллизий при одновременной ретрансляции
-    uint32_t jitter_ms = 10 + (esp_random() % 41);
-    vTaskDelay(pdMS_TO_TICKS(jitter_ms));
-
+    // очередь  разгладит отправку без заморозки BTC-таска
     ble_mesh_broadcast_packet(packet);
 }
 
@@ -256,7 +250,7 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
                                 rx_session.rx_mask |= (1 << incoming_packet.seg_current);
                             }
 
-                            uint16_t target_mask = (1 << incoming_packet.seg_total) - 1;
+                            uint16_t target_mask = (uint16_t)((1U << incoming_packet.seg_total) - 1);
 
                             // Лог перехвата отдельного сегмента
                             ESP_LOGI("MESH_ROUTER", "Перехвачен Seg [%d/%d] от MAC: %02X:%02X:%02X:%02X:%02X:%02X",
