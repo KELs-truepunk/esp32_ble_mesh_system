@@ -17,3 +17,7 @@ void relay_mesh_packet(b_mesh_packet_t *packet);            // Логика ма
 void pack_mesh_raw_data(void);
 // Основной колбэк события GAP
 void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *param);
+//таска очереди 
+void mesh_tx_task(void *pvParameters);
+//инициализация таски с очередью
+void init_mesh_tx_system(void);

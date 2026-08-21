@@ -46,7 +46,53 @@ esp_ble_adv_params_t hybrid_adv_params = {
     .channel_map = ADV_CHNL_ALL, // вещание на всех трех частотных каналах (37, 38, 39)
     .adv_filter_policy = ADV_FILTER_ALLOW_SCAN_ANY_CON_ANY,
 };
+void mesh_tx_task(void *pvParameters)
+{
+    b_mesh_packet_t pkt;
 
+    while (1)
+    {
+        if (xQueueReceive(mesh_tx_queue, &pkt, portMAX_DELAY) == pdTRUE)
+        {
+            ESP_LOGI("MESH_TX", "Извлечен из очереди Seg [%d/%d], Seq=%d",
+                     pkt.seg_current + 1, pkt.seg_total, pkt.seq_num);
+
+            uint8_t idx = 0;
+            memset(pending_adv_data, 0, sizeof(pending_adv_data));
+
+            // Собираем стандартный BLE ADV payload
+            pending_adv_data[idx++] = 2;
+            pending_adv_data[idx++] = ESP_BLE_AD_TYPE_FLAG;
+            pending_adv_data[idx++] = ESP_BLE_ADV_FLAG_NON_LIMIT_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT;
+
+            pending_adv_data[idx++] = sizeof(b_mesh_packet_t) + 3; // +2 байта CID, +1 байт Type 0xFF
+            pending_adv_data[idx++] = 0xFF;                        // Manufacturer Specific Data
+
+            pending_adv_data[idx++] = (MESH_COMPANY_ID & 0xFF);
+            pending_adv_data[idx++] = ((MESH_COMPANY_ID >> 8) & 0xFF);
+
+            memcpy(&pending_adv_data[idx], &pkt, sizeof(b_mesh_packet_t));
+            idx += sizeof(b_mesh_packet_t);
+            pending_adv_len = idx;
+
+            // Триггерим цепочку событий: Stop ADV -> Config RAW Data -> Start ADV
+            esp_ble_gap_stop_advertising();
+
+            // Даем пакету покрутиться в эфире 150 мс перед следующим сегментом
+            vTaskDelay(pdMS_TO_TICKS(150));
+        }
+    }
+}
+
+void init_mesh_tx_system(void)
+{
+    if (mesh_tx_queue == NULL)
+    {
+        mesh_tx_queue = xQueueCreate(16, sizeof(b_mesh_packet_t));
+        xTaskCreate(mesh_tx_task, "mesh_tx_task", 3072, NULL, 5, NULL);
+        ESP_LOGI("MESH_TX", "Система TX-очереди инициализирована");
+    }
+}
 // Вспомогательная функция добавления хеша пакета в кэш дубликатов
 void add_to_router_cache(uint32_t packet_hash)
 {
@@ -76,7 +122,7 @@ void ble_mesh_broadcast_packet(b_mesh_packet_t *packet)
     esp_ble_gap_stop_advertising();
     ESP_LOGI("GAP_HANDLER", "Трансляция в эфир: Seq=%d, Seg=[%d/%d], TTL=%d\n PAYLOAD: %d",
              packet->seq_num, packet->seg_current + 1, packet->seg_total, packet->ttl);
-    //uint8_t raw_adv_data[31] = {0};
+    // uint8_t raw_adv_data[31] = {0};
     uint8_t idx = 0;
     memset(pending_adv_data, 0, sizeof(pending_adv_data));
     // 1. BLE Flags
