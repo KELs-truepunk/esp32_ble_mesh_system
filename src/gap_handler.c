@@ -172,16 +172,19 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
     switch (event)
     {
     case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
-        // Радио заглохло — заталкиваем готовый 26-байтовый массив в контроллер
-        if (pending_adv_len > 0)
+        // Радио заглохло — даем зеленый свет таску брать следующий пакет
+        if (adv_stop_sem != NULL)
         {
-            esp_ble_gap_config_adv_data_raw(pending_adv_data, pending_adv_len);
+            xSemaphoreGive(adv_stop_sem);
         }
         break;
 
     case ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT:
-        // Байты записаны — запускаем вещание с нашими параметрами
-        esp_ble_gap_start_advertising(&hybrid_adv_params);
+        // Данные записаны — даем зеленый свет таску для запуска ADV
+        if (adv_config_sem != NULL)
+        {
+            xSemaphoreGive(adv_config_sem);
+        }
         break;
 
     case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
