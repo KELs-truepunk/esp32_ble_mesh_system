@@ -9,11 +9,22 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/queue.h"
+
+static QueueHandle_t mesh_tx_queue = NULL;
+static uint8_t pending_adv_data[31];
+static uint8_t pending_adv_len = 0;
+
 static const char *TAG = "GAP_HANDLER";
 
 // eдиный кэш дубликатов по 32-битному хешу FNV-1a
 static uint32_t r_cache[ROUTER_CACHE_SIZE];
 static int r_cache_idx = 0; // счетчик r_cache
+// Чтобы передать байты пакета из функции ble_mesh_broadcast_packet в событие остановки рекламы, сохраняем их во временный буфер:
+static uint8_t pending_adv_data[31];
+static uint8_t pending_adv_len = 0;
 
 // Буфер сборки сегментированных сообщений
 typedef struct
@@ -28,8 +39,8 @@ static mesh_reassembly_t rx_session = {0};
 
 // настройка параметров GAP вещания (на передачу)
 esp_ble_adv_params_t hybrid_adv_params = {
-    .adv_int_min = 0x20,      // мин интервал вещания (32 * 0.625 мс = 20 мс)
-    .adv_int_max = 0x20,      // макс интервал вещания (20 мс)
+    .adv_int_min = 0x30,      // мин интервал вещания (32 * 0.625 мс = 20 мс)
+    .adv_int_max = 0x40,      // макс интервал вещания (20 мс)
     .adv_type = ADV_TYPE_IND, // разрешение на входящие подключения от телефонов
     .own_addr_type = BLE_ADDR_TYPE_PUBLIC,
     .channel_map = ADV_CHNL_ALL, // вещание на всех трех частотных каналах (37, 38, 39)
@@ -61,32 +72,36 @@ void ble_mesh_broadcast_packet(b_mesh_packet_t *packet)
 {
     if (packet == NULL)
         return;
+
+    esp_ble_gap_stop_advertising();
     ESP_LOGI("GAP_HANDLER", "Трансляция в эфир: Seq=%d, Seg=[%d/%d], TTL=%d\n PAYLOAD: %d",
              packet->seq_num, packet->seg_current + 1, packet->seg_total, packet->ttl);
-    uint8_t raw_adv_data[31] = {0};
+    //uint8_t raw_adv_data[31] = {0};
     uint8_t idx = 0;
-
+    memset(pending_adv_data, 0, sizeof(pending_adv_data));
     // 1. BLE Flags
-    raw_adv_data[idx++] = 2;
-    raw_adv_data[idx++] = ESP_BLE_AD_TYPE_FLAG;
-    raw_adv_data[idx++] = ESP_BLE_ADV_FLAG_NON_LIMIT_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT;
+    pending_adv_data[idx++] = 2;
+    pending_adv_data[idx++] = ESP_BLE_AD_TYPE_FLAG;
+    pending_adv_data[idx++] = ESP_BLE_ADV_FLAG_NON_LIMIT_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT;
 
     // 2. Manufacturer Specific Data (0xFF)
-    raw_adv_data[idx++] = sizeof(b_mesh_packet_t) + 2 + 1; // Struct + Company ID + Type
-    raw_adv_data[idx++] = 0xFF;
+    pending_adv_data[idx++] = sizeof(b_mesh_packet_t) + 2 + 1; // Struct + Company ID + Type
+    pending_adv_data[idx++] = 0xFF;
 
     // Company ID (0xFFFF)
-    raw_adv_data[idx++] = (MESH_COMPANY_ID & 0xFF);
-    raw_adv_data[idx++] = ((MESH_COMPANY_ID >> 8) & 0xFF);
+    pending_adv_data[idx++] = (MESH_COMPANY_ID & 0xFF);
+    pending_adv_data[idx++] = ((MESH_COMPANY_ID >> 8) & 0xFF);
 
     // Копируем структуру пакета
-    memcpy(&raw_adv_data[idx], packet, sizeof(b_mesh_packet_t));
+    memcpy(&pending_adv_data[idx], packet, sizeof(b_mesh_packet_t));
     idx += sizeof(b_mesh_packet_t);
 
     ESP_LOGI(TAG, "Трансляция пакета в эфир: Seq=%d, TTL=%d, Type=0x%01X",
              packet->seq_num, packet->ttl, packet->packet_type);
 
-    esp_ble_gap_config_adv_data_raw(raw_adv_data, idx);
+    pending_adv_len = idx;
+    // Шаг 1: Глушим текущую рекламу
+    esp_ble_gap_stop_advertising();
 }
 // Логика маршрутизации
 void relay_mesh_packet(b_mesh_packet_t *packet)
@@ -119,8 +134,17 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
 {
     switch (event)
     {
+
     case ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT:
+        // Шаг 3: Байты записаны в RAM! Запускаем рекламу
         esp_ble_gap_start_advertising(&hybrid_adv_params);
+        break;
+    case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
+        // Шаг 2: Радио заглушено! Теперь безопасно загружаем новые байты
+        if (pending_adv_len > 0)
+        {
+            esp_ble_gap_config_adv_data_raw(pending_adv_data, pending_adv_len);
+        }
         break;
 
     case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
