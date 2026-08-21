@@ -11,6 +11,9 @@
 #include "freertos/queue.h"
 
 static const char *TAG = "GAP_HANDLER";
+//семафоры
+static SemaphoreHandle_t adv_config_sem = NULL;
+static SemaphoreHandle_t adv_stop_sem = NULL;
 
 // Буферы очереди и передачи сырых байт в эфир
 static QueueHandle_t mesh_tx_queue = NULL;
@@ -19,7 +22,7 @@ static uint8_t pending_adv_len = 0;
 
 // Единый кэш дубликатов по 32-битному хешу FNV-1a
 static uint32_t r_cache[ROUTER_CACHE_SIZE];
-static int r_cache_idx = 0; 
+static int r_cache_idx = 0;
 
 // Структура сообщения для очереди отправки
 typedef struct
@@ -33,7 +36,7 @@ typedef struct
     uint16_t seq_num;
     uint32_t sender_id;
     uint8_t total_segs;
-    uint16_t rx_mask; 
+    uint16_t rx_mask;
     char buffer[15 * PAYLOAD_SIZE + 1];
 } mesh_reassembly_t;
 static mesh_reassembly_t rx_session = {0};
@@ -58,8 +61,8 @@ static void prepare_raw_adv_buffer(const b_mesh_packet_t *pkt)
 
     // 2. Блок Manufacturer Specific Data (23 байта)
     // Длина: 1 байт (тип) + 2 байта (Company ID) + 19 байт (payload) = 22 байта (0x16)
-    pending_adv_data[3] = 22;   
-    pending_adv_data[4] = 0xFF; // Тип: Manufacturer Data
+    pending_adv_data[3] = 22;
+    pending_adv_data[4] = 0xFF;                                     // Тип: Manufacturer Data
     pending_adv_data[5] = (uint8_t)(MESH_COMPANY_ID & 0xFF);        // 0xFF
     pending_adv_data[6] = (uint8_t)((MESH_COMPANY_ID >> 8) & 0xFF); // 0xFF
 
@@ -86,6 +89,9 @@ void mesh_tx_task(void *pvParameters)
                 // Если вещание не было активно, сразу напрямую заливаем данные в контроллер
                 esp_ble_gap_config_adv_data_raw(pending_adv_data, pending_adv_len);
             }
+            // ДАЕМ РАДИОМОДУЛЮ ВРЕМЯ НА ВЕЩАНИЕ (60 мс)
+            // При интервале 20-30мс пакет успеет гарантированно уйти в эфир несколько раз
+            vTaskDelay(pdMS_TO_TICKS(120));
         }
     }
 }
