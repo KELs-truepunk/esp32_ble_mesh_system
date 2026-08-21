@@ -80,18 +80,22 @@ void mesh_tx_task(void *pvParameters)
     {
         if (xQueueReceive(mesh_tx_queue, &tx_msg, portMAX_DELAY) == pdTRUE)
         {
-            // Формируем сырой бинарный ADV буфер
+            // 1. Упаковываем пакет в сырые байты
             prepare_raw_adv_buffer(&tx_msg.pkt);
 
-            // Останавливаем текущее вещание, чтобы записать новые данные
-            if (esp_ble_gap_stop_advertising() != ESP_OK)
-            {
-                // Если вещание не было активно, сразу напрямую заливаем данные в контроллер
-                esp_ble_gap_config_adv_data_raw(pending_adv_data, pending_adv_len);
-            }
-            // ДАЕМ РАДИОМОДУЛЮ ВРЕМЯ НА ВЕЩАНИЕ (60 мс)
-            // При интервале 20-30мс пакет успеет гарантированно уйти в эфир несколько раз
+            // 2. Отправляем байты в контроллер и ЖДЕМ подтверждения от колбэка
+            esp_ble_gap_config_adv_data_raw(pending_adv_data, pending_adv_len);
+            xSemaphoreTake(adv_config_sem, portMAX_DELAY);
+
+            // 3. Запускаем вещание
+            esp_ble_gap_start_advertising(&hybrid_adv_params);
+
+            // 4. ДЕРЖИМ ПАКЕТ В ЭФИРЕ 120 мс (за это время он уйдет несколько раз)
             vTaskDelay(pdMS_TO_TICKS(120));
+
+            // 5. Останавливаем вещание и ЖДЕМ полной остановки радио
+            esp_ble_gap_stop_advertising();
+            xSemaphoreTake(adv_stop_sem, portMAX_DELAY);
         }
     }
 }
