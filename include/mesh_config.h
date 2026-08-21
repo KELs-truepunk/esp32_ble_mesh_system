@@ -8,8 +8,8 @@
 // Custom Company ID для Manufacturer Specific Data (0xFFFF — тестовый диапазон BLE)
 #define MESH_COMPANY_ID 0xFFFF
 
-// Размер кольцевого буфера дубликатов (r_cache)
-#define ROUTER_CACHE_SIZE 25
+// Размер кольцевого буфера дубликатов (кратен 2^N для оптимизации битовой маски)
+#define ROUTER_CACHE_SIZE 32
 
 // Базовый TTL для новых сообщений
 #define DEFAULT_TTL 4
