@@ -101,12 +101,8 @@ static void gatts_profile_a_event_handler(esp_gatts_cb_event_t event, esp_gatt_i
                 uint32_t self_hash = mesh_calc_hash(DEFAULT_SENDER_ID, seq_counter, i);
                 add_to_router_cache(self_hash);
 
-                // BURST: Отправляем один и тот же сегмент 3 раза подряд для компенсации помех
-                for (uint8_t b = 0; b < 3; b++)
-                {
-                    ble_mesh_broadcast_packet(&phone_pkt);
-                    vTaskDelay(pdMS_TO_TICKS(5));
-                }
+                // BURST
+                ble_mesh_broadcast_packet(&phone_pkt);
 
                 vTaskDelay(pdMS_TO_TICKS(100)); // Пауза перед следующим сегментом
             }

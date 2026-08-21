@@ -21,6 +21,15 @@ static const char *TAG = "GAP_HANDLER";
 static uint32_t r_cache[ROUTER_CACHE_SIZE];
 static int r_cache_idx = 0; // счетчик r_cache
 
+// 1. Структура сообщения для очереди отправки
+typedef struct
+{
+    b_mesh_packet_t pkt;
+} mesh_tx_msg_t;
+
+// 2. Буфер пакета, готового к упаковке в ADV
+static b_mesh_packet_t pending_adv_pkt;
+
 // Буфер сборки сегментированных сообщений
 typedef struct
 {
@@ -44,38 +53,18 @@ esp_ble_adv_params_t hybrid_adv_params = {
 
 void mesh_tx_task(void *pvParameters)
 {
-    b_mesh_packet_t pkt;
-
-    while (1)
+    mesh_tx_msg_t tx_msg;
+    for (;;)
     {
-        if (xQueueReceive(mesh_tx_queue, &pkt, portMAX_DELAY) == pdTRUE)
+        if (xQueueReceive(mesh_tx_queue, &tx_msg, portMAX_DELAY) == pdTRUE)
         {
-            ESP_LOGI("MESH_TX", "Извлечен из очереди Seg [%d/%d], Seq=%d",
-                     pkt.seg_current + 1, pkt.seg_total, pkt.seq_num);
+            memcpy(&pending_adv_pkt, &tx_msg.pkt, sizeof(b_mesh_packet_t));
 
-            uint8_t idx = 0;
-            memset(pending_adv_data, 0, sizeof(pending_adv_data));
-
-            // Собираем стандартный BLE ADV payload
-            pending_adv_data[idx++] = 2;
-            pending_adv_data[idx++] = ESP_BLE_AD_TYPE_FLAG;
-            pending_adv_data[idx++] = ESP_BLE_ADV_FLAG_NON_LIMIT_DISC | ESP_BLE_ADV_FLAG_BREDR_NOT_SPT;
-
-            pending_adv_data[idx++] = sizeof(b_mesh_packet_t) + 3; // +2 байта CID, +1 байт Type 0xFF
-            pending_adv_data[idx++] = 0xFF;                        // Manufacturer Specific Data
-
-            pending_adv_data[idx++] = (MESH_COMPANY_ID & 0xFF);
-            pending_adv_data[idx++] = ((MESH_COMPANY_ID >> 8) & 0xFF);
-
-            memcpy(&pending_adv_data[idx], &pkt, sizeof(b_mesh_packet_t));
-            idx += sizeof(b_mesh_packet_t);
-            pending_adv_len = idx;
-
-            // Триггерим цепочку событий: Stop ADV -> Config RAW Data -> Start ADV
-            esp_ble_gap_stop_advertising();
-
-            // Даем пакету покрутиться в эфире 150 мс перед следующим сегментом
-            vTaskDelay(pdMS_TO_TICKS(150));
+            // Если стоп вернуть ошибку (ADV и так выключен), сразу шлем конфиг
+            if (esp_ble_gap_stop_advertising() != ESP_OK)
+            {
+                config_adv_raw_data();
+            }
         }
     }
 }
@@ -84,9 +73,10 @@ void init_mesh_tx_system(void)
 {
     if (mesh_tx_queue == NULL)
     {
-        mesh_tx_queue = xQueueCreate(16, sizeof(b_mesh_packet_t));
+        mesh_tx_queue = xQueueCreate(16, sizeof(mesh_tx_msg_t));
+
+        // Запуск самого таска отправки
         xTaskCreate(mesh_tx_task, "mesh_tx_task", 3072, NULL, 5, NULL);
-        ESP_LOGI("MESH_TX", "Система TX-очереди инициализирована");
     }
 }
 // Вспомогательная функция добавления хеша пакета в кэш дубликатов
