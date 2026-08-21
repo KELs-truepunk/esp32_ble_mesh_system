@@ -116,9 +116,11 @@ bool is_in_router_cache(uint32_t packet_hash)
 // Отправка бинарного пакета нашей сети в очередь
 void ble_mesh_broadcast_packet(b_mesh_packet_t *packet)
 {
-    if (packet == NULL || mesh_tx_queue == NULL) return;
+    if (packet == NULL || mesh_tx_queue == NULL)
+        return;
 
-    if (xQueueSend(mesh_tx_queue, packet, pdMS_TO_TICKS(50)) != pdTRUE) {
+    if (xQueueSend(mesh_tx_queue, packet, pdMS_TO_TICKS(50)) != pdTRUE)
+    {
         ESP_LOGE("MESH_TX", "Переполнение TX-очереди! Пакет Seq=%d потерян", packet->seq_num);
     }
 }
@@ -154,26 +156,23 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
     switch (event)
     {
 
-    case ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT:
-        // Шаг 3: Байты записаны в RAM! Запускаем рекламу
-        esp_ble_gap_start_advertising(&hybrid_adv_params);
-        break;
     case ESP_GAP_BLE_ADV_STOP_COMPLETE_EVT:
-        // Шаг 2: Радио заглушено! Теперь безопасно загружаем новые байты
+        // Радио заглохло — теперь безопасно заливаем новые байты из pending_adv_data
         if (pending_adv_len > 0)
         {
             esp_ble_gap_config_adv_data_raw(pending_adv_data, pending_adv_len);
         }
         break;
 
+    case ESP_GAP_BLE_ADV_DATA_RAW_SET_COMPLETE_EVT:
+        // Байты зафиксированы — запускаем вещание заново
+        esp_ble_gap_start_advertising(&hybrid_adv_params);
+        break;
+
     case ESP_GAP_BLE_ADV_START_COMPLETE_EVT:
         if (param->adv_start_cmpl.status != ESP_BT_STATUS_SUCCESS)
         {
-            ESP_LOGE(TAG, "Ошибка старта вещания: %d", param->adv_start_cmpl.status);
-        }
-        else
-        {
-            ESP_LOGI(TAG, "МЕШ-УЗЕЛ В ЭФИРЕ! Пакет обновлен / запущен.");
+            ESP_LOGE("GAP_HANDLER", "Ошибка старта ADV: %d", param->adv_start_cmpl.status);
         }
         break;
 
