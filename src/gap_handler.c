@@ -11,7 +11,7 @@
 #include "freertos/queue.h"
 
 static const char *TAG = "GAP_HANDLER";
-//семафоры
+// семафоры
 static SemaphoreHandle_t adv_config_sem = NULL;
 static SemaphoreHandle_t adv_stop_sem = NULL;
 
@@ -100,6 +100,9 @@ void init_mesh_tx_system(void)
 {
     if (mesh_tx_queue == NULL)
     {
+        adv_config_sem = xSemaphoreCreateBinary();
+        adv_stop_sem = xSemaphoreCreateBinary();
+
         mesh_tx_queue = xQueueCreate(16, sizeof(mesh_tx_msg_t));
         xTaskCreate(mesh_tx_task, "mesh_tx_task", 3072, NULL, 5, NULL);
     }
