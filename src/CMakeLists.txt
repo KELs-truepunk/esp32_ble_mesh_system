@@ -7,12 +7,11 @@ idf_component_register(
         "web_server.c"
     INCLUDE_DIRS 
         "."
-        "include"
     REQUIRES 
         bt 
         nvs_flash 
         esp_wifi 
         esp_http_server
-    EMBED_FILES 
-        "../index.html" 
+    EMBED_TXTFILES 
+        "index.html"
 )
