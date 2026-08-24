@@ -1,16 +1,19 @@
-#ifndef BLE_MESH_TRANSPORT_H
-#define BLE_MESH_TRANSPORT_H
-
+#pragma once
 #include <stdint.h>
-#include <stddef.h> // Добавлен для size_t
 #include <stdbool.h>
-#include "ble_mesh_protocol.h"
-#include "mesh_config.h" // DEVICE_NAME и MESH_COMPANY_ID берутся отсюда
 
-// Убраны дублирующиеся #define DEVICE_NAME и MESH_COMPANY_ID
+#define WEB_MSG_BUFFER_SIZE 10
+#define MAX_MESH_MSG_LEN 128 // или сколько у тебя там влезает в пейлоад
 
-void gatt_server_init(void);
-void gatt_notify_incoming_mesh_pkt(const uint8_t *payload, size_t len);
+// Структура для кольцевого буфера
+typedef struct {
+    uint8_t sender_id;
+    uint16_t seq_num;
+    char text[MAX_MESH_MSG_LEN];
+} mesh_web_msg_t;
+
+// Прототипы функций
+bool mesh_pop_web_message(mesh_web_msg_t *out_msg);
 void ble_mesh_transport_init(void);
-
-#endif // BLE_MESH_TRANSPORT_H
+void mesh_push_web_message(uint32_t sender_id, uint16_t seq_num, const char *text);
+esp_err_t ble_mesh_send_text(const char *text);
