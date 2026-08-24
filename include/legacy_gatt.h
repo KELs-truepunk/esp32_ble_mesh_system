@@ -1,5 +1,5 @@
 #pragma once
-
+//LEGACY
 #include "esp_gatts_api.h"   // API для GATT (подключение телефона, сервисы)
 #include "esp_gap_ble_api.h" // API для GAP (вещание, сканирование)
 #include <stdint.h>
