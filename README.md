@@ -46,6 +46,8 @@ The protocol uses standard BLE Manufacturer Specific Data (`0xFF`) with a custom
                                                                │ (Wi-Fi SoftAP / HTTP REST API)
                                                                ▼
                                                      [ Mobile Terminal B ]
+```
+
 ---
 
 ## 📂 Project Structure
