@@ -280,20 +280,13 @@ void gap_event_handler(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *par
 
                             if ((rx_session.rx_mask & target_mask) == target_mask)
                             {
-                                ESP_LOGW("MESH_ROUTER", "=================================================");
                                 ESP_LOGW("MESH_ROUTER", ">>> СООБЩЕНИЕ СОБРАНО: \"%s\" <<<", rx_session.buffer);
-                                ESP_LOGW("MESH_ROUTER", "=================================================");
 
-                                if (gl_profile_tab[PROFILE_A_APP_ID].conn_id != 0xFFFF && b_char_handle != 0)
-                                {
-                                    esp_ble_gatts_send_indicate(
-                                        gl_profile_tab[PROFILE_A_APP_ID].gatts_if,
-                                        gl_profile_tab[PROFILE_A_APP_ID].conn_id,
-                                        b_char_handle,
-                                        strlen(rx_session.buffer),
-                                        (uint8_t *)rx_session.buffer,
-                                        false);
-                                }
+                                // Вместо esp_ble_gatts_send_indicate(...) пушим данные в буфер для Web API
+                                mesh_push_web_message(rx_session.sender_id, rx_session.seq_num, rx_session.buffer);
+
+                                // Сброс сессии сборки
+                                rx_session.active = false;
                             }
 
                             if (incoming_packet.ttl > 1)
