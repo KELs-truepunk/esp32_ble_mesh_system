@@ -34,11 +34,9 @@ void ble_mesh_transport_init(void)
     ESP_ERROR_CHECK(esp_bluedroid_init());
     ESP_ERROR_CHECK(esp_bluedroid_enable());
 
-    // регестрация к алл-беков для GAP и GATT
+    // регестрация калл-беков для GAP
     ESP_ERROR_CHECK(esp_ble_gap_register_callback(gap_event_handler));
-    ESP_ERROR_CHECK(esp_ble_gatts_register_callback(gatts_event_handler));
-    ESP_ERROR_CHECK(esp_ble_gatts_app_register(PROFILE_A_APP_ID));
-
+    
     // ставим BLE передачу на +9dBm
     ESP_ERROR_CHECK(esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_ADV, ESP_PWR_LVL_P9));
     ESP_ERROR_CHECK(esp_ble_tx_power_set(ESP_BLE_PWR_TYPE_SCAN, ESP_PWR_LVL_P9));
