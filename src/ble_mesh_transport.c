@@ -9,7 +9,7 @@
 #include "nvs_flash.h" //флеш память есп32
 
 static const char *TAG = "BLE_MESH_TRANSPORT";
-
+static uint16_t global_seq_num = 0;
 // Кольцевой буфер для сообщения HTTP-серверу
 static mesh_web_msg_t web_msg_ring[WEB_MSG_BUFFER_SIZE];
 static int web_msg_head = 0;
@@ -91,18 +91,18 @@ esp_err_t ble_mesh_send_text(const char *text)
     return ESP_OK;
 }
 
-
 void mesh_push_web_message(uint32_t sender_id, uint16_t seq_num, const char *text)
 {
     taskENTER_CRITICAL(&web_msg_spinlock);
-    
+
     web_msg_ring[web_msg_head].sender_id = sender_id;
     web_msg_ring[web_msg_head].seq_num = seq_num;
     strncpy(web_msg_ring[web_msg_head].text, text, MAX_MESH_MSG_LEN - 1);
     web_msg_ring[web_msg_head].text[MAX_MESH_MSG_LEN - 1] = '\0';
 
     web_msg_head = (web_msg_head + 1) % WEB_MSG_BUFFER_SIZE;
-    if (web_msg_head == web_msg_tail) {
+    if (web_msg_head == web_msg_tail)
+    {
         web_msg_tail = (web_msg_tail + 1) % WEB_MSG_BUFFER_SIZE;
     }
 
@@ -111,10 +111,12 @@ void mesh_push_web_message(uint32_t sender_id, uint16_t seq_num, const char *tex
 
 bool mesh_pop_web_message(mesh_web_msg_t *out_msg)
 {
-    if (!out_msg) return false;
+    if (!out_msg)
+        return false;
 
     taskENTER_CRITICAL(&web_msg_spinlock);
-    if (web_msg_head == web_msg_tail) {
+    if (web_msg_head == web_msg_tail)
+    {
         taskEXIT_CRITICAL(&web_msg_spinlock);
         return false;
     }
