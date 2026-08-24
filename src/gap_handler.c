@@ -37,6 +37,7 @@ typedef struct
     uint32_t sender_id;
     uint8_t total_segs;
     uint16_t rx_mask;
+    bool active;
     char buffer[15 * PAYLOAD_SIZE + 1];
 } mesh_reassembly_t;
 static mesh_reassembly_t rx_session = {0};
