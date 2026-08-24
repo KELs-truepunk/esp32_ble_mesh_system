@@ -1,12 +1,17 @@
+# PlatformIO & Build artifacts
 .pio/
 .pioenvs/
 .piolibdeps/
 build/
-.vscode/
-.idea/
-*.cmake
 CMakeCache.txt
 CMakeFiles/
-node_modules/
+
+# IDEs & System
+.vscode/
+.idea/
+*.code-workspace
 .DS_Store
-test/
+node_modules/
+
+# ESP-IDF Temp files
+sdkconfig*.old
