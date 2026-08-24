@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flooding Mesh Terminal</title>
+    <style>
+        body { background: #121212; color: #00ff66; font-family: monospace; padding: 15px; margin: 0; }
+        #chat { border: 1px solid #00ff66; height: 300px; overflow-y: auto; padding: 10px; margin-bottom: 10px; }
+        .msg { margin-bottom: 5px; }
+        input, button { background: #222; color: #00ff66; border: 1px solid #00ff66; padding: 10px; }
+        input { width: calc(100% - 100px); }
+        button { width: 80px; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <h3>[ Mesh Node Web Console ]</h3>
+    <div id="chat"></div>
+    <input type="text" id="inp" placeholder="Сообщение..." maxlength="160">
+    <button onclick="send()">TX</button>
+
+    <script>
+        async function send() {
+            let el = document.getElementById('inp');
+            if (!el.value) return;
+            await fetch('/api/send', { method: 'POST', body: el.value });
+            let chat = document.getElementById('chat');
+            chat.innerHTML += `<div class="msg" style="color:#aaa;"><b>[ME]:</b> ${el.value}</div>`;
+            el.value = '';
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        async function poll() {
+            try {
+                let res = await fetch('/api/messages');
+                let data = await res.json();
+                if (data.text) {
+                    let chat = document.getElementById('chat');
+                    chat.innerHTML += `<div class="msg"><b>[${data.sender}]:</b> ${data.text}</div>`;
+                    chat.scrollTop = chat.scrollHeight;
+                }
+            } catch(e) {}
+        }
+        setInterval(poll, 1500);
+    </script>
+</body>
+</html>
