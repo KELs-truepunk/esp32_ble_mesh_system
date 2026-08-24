@@ -15,3 +15,4 @@ idf_component_register(
         esp_http_server
     EMBED_FILES 
         "../index.html" 
+)
