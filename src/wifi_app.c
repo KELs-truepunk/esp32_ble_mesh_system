@@ -17,8 +17,8 @@ void wifi_init_softap(void)
 
     wifi_config_t wifi_config = {
         .ap = {
-            .ssid = "FloodingMesh_Node",
-            .ssid_len = strlen("FloodingMesh_Node"),
+            .ssid = "Node_COM15",
+            .ssid_len = strlen("Node_COM15"),
             .channel = 6,
             .password = "12345678",
             .max_connection = 4,
