@@ -15,4 +15,4 @@
 #define DEFAULT_TTL 4
 
 // Динамический ID отправителя по умолчанию (если не вытянули MAC)
-#define DEFAULT_SENDER_ID 0x77777777
+#define DEFAULT_SENDER_ID 0x71171717
